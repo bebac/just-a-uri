@@ -204,58 +204,31 @@ TEST_CASE("Formatting and Output")
     CHECK(s == "https://example.com/test");
   }
 
-    SUBCASE("Full URI formatting")
+  SUBCASE("Full URI formatting")
+  {
+    auto full = uri::uri_builder{}
+      .scheme("http")
+      .userinfo("admin")
+      .host("localhost")
+      .port("3000")
+      .path("/api")
+      .query("v=1")
+      .fragment("top")
+      .build();
 
-    {
-
-      auto full = uri::uri_builder{}
-
-        .scheme("http")
-
-        .userinfo("admin")
-
-        .host("localhost")
-
-        .port("3000")
-
-        .path("/api")
-
-        .query("v=1")
-
-        .fragment("top")
-
-        .build();
-
-  
-
-      CHECK(std::format("{}", full) == "http://admin@localhost:3000/api?v=1#top");
-
-    }
-
-  
-
-    SUBCASE("uri_view formatting")
-
-    {
-
-      std::string s = "https://example.com";
-
-      auto res = uri::parse(s);
-
-      auto& u = std::get<uri::uri_view>(res);
-
-      CHECK(std::format("{}", u) == "https://example.com");
-
-      
-
-      std::stringstream ss;
-
-      ss << u;
-
-      CHECK(ss.str() == "https://example.com");
-
-    }
-
+    CHECK(std::format("{}", full) == "http://admin@localhost:3000/api?v=1#top");
   }
 
-  
+  SUBCASE("uri_view formatting")
+  {
+    std::string s = "https://example.com";
+    auto res = uri::parse(s);
+
+    auto& u = std::get<uri::uri_view>(res);
+    CHECK(std::format("{}", u) == "https://example.com");
+
+    std::stringstream ss;
+    ss << u;
+    CHECK(ss.str() == "https://example.com");
+  }
+}
