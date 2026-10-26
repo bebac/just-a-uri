@@ -56,6 +56,19 @@ namespace uri
 
       return result;
     }
+
+    // Returns the value of a hexadecimal digit, or -1 if c is not a
+    // hex digit. Case-insensitive per RFC 3986 HEXDIGIT.
+    int hex_value(char c)
+    {
+      if (c >= '0' && c <= '9')
+        return c - '0';
+      if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+      if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
+      return -1;
+    }
   }
 
   std::vector<query_param_view> parse_query(std::string_view query_string)
@@ -81,6 +94,38 @@ namespace uri
       query_string.remove_prefix(pair_end + 1);
     }
     return result;
+  }
+
+  result<std::string> percent_decode(std::string_view input)
+  {
+    std::string decoded;
+    decoded.reserve(input.size());
+
+    for (size_t i = 0; i < input.size(); ++i)
+    {
+      if (input[i] != '%')
+      {
+        decoded.push_back(input[i]);
+        continue;
+      }
+
+      if (i + 2 >= input.size())
+      {
+        return parse_error{error_code::invalid_percent_encoding, "Incomplete percent-encoding"};
+      }
+
+      const int high = hex_value(input[i + 1]);
+      const int low = hex_value(input[i + 2]);
+      if (high < 0 || low < 0)
+      {
+        return parse_error{error_code::invalid_percent_encoding, "Invalid hex digit in percent-encoding"};
+      }
+
+      decoded.push_back(static_cast<char>(high * 16 + low));
+      i += 2;
+    }
+
+    return decoded;
   }
 
   result<uri_view> parse(std::string_view uri_string)

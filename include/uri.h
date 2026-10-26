@@ -80,7 +80,8 @@ namespace uri
     invalid_authority,
     invalid_path,
     invalid_query,
-    invalid_fragment
+    invalid_fragment,
+    invalid_percent_encoding
   };
 
   struct parse_error
@@ -103,6 +104,19 @@ namespace uri
    * @brief Deep parses a query string into a collection of key-value pairs.
    */
   std::vector<query_param_view> parse_query(std::string_view query_string);
+
+  /**
+   * @brief Percent-decodes a string per RFC 3986 section 2.1.
+   *
+   * Decodes every pct-encoded triplet ("%XY", hex digits
+   * case-insensitive) into its byte; percent-encoded unreserved
+   * characters decode to the bare character (RFC 3986 section
+   * 6.2.2.2). A '%' not followed by two hex digits is malformed and
+   * yields a parse_error. '+' is not treated as a space: that
+   * convention belongs to application/x-www-form-urlencoded, not
+   * RFC 3986.
+   */
+  result<std::string> percent_decode(std::string_view input);
 }
 
 namespace std

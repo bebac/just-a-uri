@@ -232,3 +232,74 @@ TEST_CASE("Formatting and Output")
     CHECK(ss.str() == "https://example.com");
   }
 }
+
+TEST_CASE("Percent decoding")
+{
+  SUBCASE("Decodes pct-encoded triplets, hex digits case-insensitive")
+  {
+    auto res = uri::percent_decode("%2f%2F");
+    REQUIRE(std::holds_alternative<std::string>(res));
+    CHECK(std::get<std::string>(res) == "//");
+  }
+
+  SUBCASE("Leaves unreserved characters unchanged")
+  {
+    auto res = uri::percent_decode("abc-._~");
+    REQUIRE(std::holds_alternative<std::string>(res));
+    CHECK(std::get<std::string>(res) == "abc-._~");
+  }
+
+  SUBCASE("Decodes pct-encoded unreserved characters to the bare character")
+  {
+    auto res = uri::percent_decode("~%7E%7E");
+    REQUIRE(std::holds_alternative<std::string>(res));
+    CHECK(std::get<std::string>(res) == "~~~");
+  }
+
+  SUBCASE("Leaves plus as a literal plus (not form-encoding)")
+  {
+    auto res = uri::percent_decode("a+b%20c");
+    REQUIRE(std::holds_alternative<std::string>(res));
+    CHECK(std::get<std::string>(res) == "a+b c");
+  }
+
+  SUBCASE("Decodes reserved and multi-byte utf-8 sequences byte-wise")
+  {
+    auto res = uri::percent_decode("%2F%3F%23%20%C3%A9");
+    REQUIRE(std::holds_alternative<std::string>(res));
+    CHECK(std::get<std::string>(res) == "/?# \xc3\xa9");
+  }
+
+  SUBCASE("Empty string decodes to empty string")
+  {
+    auto res = uri::percent_decode("");
+    REQUIRE(std::holds_alternative<std::string>(res));
+    CHECK(std::get<std::string>(res) == "");
+  }
+
+  SUBCASE("Trailing percent is an error")
+  {
+    auto res = uri::percent_decode("100%");
+    REQUIRE(std::holds_alternative<uri::parse_error>(res));
+    auto &err = std::get<uri::parse_error>(res);
+    CHECK(err.code == uri::error_code::invalid_percent_encoding);
+  }
+
+  SUBCASE("Truncated percent-encoding is an error")
+  {
+    auto res = uri::percent_decode("%2");
+    REQUIRE(std::holds_alternative<uri::parse_error>(res));
+    auto &err = std::get<uri::parse_error>(res);
+    CHECK(err.code == uri::error_code::invalid_percent_encoding);
+    CHECK(err.message == "Incomplete percent-encoding");
+  }
+
+  SUBCASE("Invalid hex digits are an error")
+  {
+    auto res = uri::percent_decode("%ZZ");
+    REQUIRE(std::holds_alternative<uri::parse_error>(res));
+    auto &err = std::get<uri::parse_error>(res);
+    CHECK(err.code == uri::error_code::invalid_percent_encoding);
+    CHECK(err.message == "Invalid hex digit in percent-encoding");
+  }
+}
