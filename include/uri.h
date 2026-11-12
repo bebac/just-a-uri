@@ -115,8 +115,12 @@ namespace uri
    * yields a parse_error. '+' is not treated as a space: that
    * convention belongs to application/x-www-form-urlencoded, not
    * RFC 3986.
+   *
+   * If a percent-encoded byte matches a character in
+   * characters_to_preserve, its original "%XY" triplet is copied unchanged.
+   * All other triplets follow the same rules as the one-argument overload.
    */
-  result<std::string> percent_decode(std::string_view input);
+  result<std::string> percent_decode(std::string_view input, std::string_view characters_to_preserve = {});
 }
 
 namespace std

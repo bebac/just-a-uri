@@ -256,6 +256,13 @@ TEST_CASE("Percent decoding")
     CHECK(std::get<std::string>(res) == "~~~");
   }
 
+  SUBCASE("Leaves selected percent-encoded characters intact")
+  {
+    auto res = uri::percent_decode("%2F%3f%23%20", "/?");
+    REQUIRE(std::holds_alternative<std::string>(res));
+    CHECK(std::get<std::string>(res) == "%2F%3f# ");
+  }
+
   SUBCASE("Leaves plus as a literal plus (not form-encoding)")
   {
     auto res = uri::percent_decode("a+b%20c");

@@ -96,7 +96,7 @@ namespace uri
     return result;
   }
 
-  result<std::string> percent_decode(std::string_view input)
+  result<std::string> percent_decode(std::string_view input, std::string_view characters_to_preserve)
   {
     std::string decoded;
     decoded.reserve(input.size());
@@ -121,7 +121,15 @@ namespace uri
         return parse_error{error_code::invalid_percent_encoding, "Invalid hex digit in percent-encoding"};
       }
 
-      decoded.push_back(static_cast<char>(high * 16 + low));
+      const char decoded_char = static_cast<char>(high * 16 + low);
+      if (characters_to_preserve.find(decoded_char) != std::string_view::npos)
+      {
+        decoded.append(input.substr(i, 3));
+      }
+      else
+      {
+        decoded.push_back(decoded_char);
+      }
       i += 2;
     }
 
