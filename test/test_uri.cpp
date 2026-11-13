@@ -1,8 +1,10 @@
 #include "doctest.h"
 #include "uri.h"
 
+#include <span>
 #include <string>
 #include <variant>
+#include <vector>
 #include <sstream>
 #include <format>
 
@@ -309,4 +311,87 @@ TEST_CASE("Percent decoding")
     CHECK(err.code == uri::error_code::invalid_percent_encoding);
     CHECK(err.message == "Invalid hex digit in percent-encoding");
   }
+}
+
+TEST_CASE("Percent decoding into caller-provided buffer")
+{
+  char buf[16];
+
+  SUBCASE("Decodes into the buffer and returns the written prefix")
+  {
+    auto res = uri::percent_decode_into("a%20b%2Fc", buf);
+    REQUIRE(uri::value_if(res) != nullptr);
+    CHECK(*uri::value_if(res) == "a b/c");
+  }
+
+  SUBCASE("A buffer of input size always suffices")
+  {
+    std::string in = "%41%42%43";
+    std::vector<char> exact(in.size());
+    auto res = uri::percent_decode_into(in, exact);
+    REQUIRE(uri::value_if(res) != nullptr);
+    CHECK(*uri::value_if(res) == "ABC");
+  }
+
+  SUBCASE("Empty input writes nothing")
+  {
+    auto res = uri::percent_decode_into("", buf);
+    REQUIRE(uri::value_if(res) != nullptr);
+    CHECK(uri::value_if(res)->empty());
+  }
+
+  SUBCASE("Malformed escape is invalid_percent_encoding")
+  {
+    auto res = uri::percent_decode_into("%zz", buf);
+    REQUIRE(uri::error_if(res) != nullptr);
+    CHECK(uri::error_if(res)->code == uri::error_code::invalid_percent_encoding);
+  }
+
+  SUBCASE("Truncated escape is invalid_percent_encoding")
+  {
+    auto res = uri::percent_decode_into("%2", buf);
+    REQUIRE(uri::error_if(res) != nullptr);
+    CHECK(uri::error_if(res)->code == uri::error_code::invalid_percent_encoding);
+  }
+
+  SUBCASE("A too-small buffer is buffer_overflow")
+  {
+    auto res = uri::percent_decode_into("abcd", std::span<char>(buf, 2));
+    REQUIRE(uri::error_if(res) != nullptr);
+    CHECK(uri::error_if(res)->code == uri::error_code::buffer_overflow);
+  }
+}
+
+TEST_CASE("Percent-encoding validity scan")
+{
+  SUBCASE("Valid inputs")
+  {
+    CHECK(uri::is_valid_percent_encoding(""));
+    CHECK(uri::is_valid_percent_encoding("/entity/7"));
+    CHECK(uri::is_valid_percent_encoding("a%20b%2F%2fc"));
+    CHECK(uri::is_valid_percent_encoding("%C3%A9"));
+  }
+
+  SUBCASE("Malformed inputs")
+  {
+    CHECK_FALSE(uri::is_valid_percent_encoding("100%"));
+    CHECK_FALSE(uri::is_valid_percent_encoding("%2"));
+    CHECK_FALSE(uri::is_valid_percent_encoding("%zz"));
+    CHECK_FALSE(uri::is_valid_percent_encoding("a%2"));
+  }
+}
+
+TEST_CASE("Result accessors")
+{
+  auto ok = uri::percent_decode("abc");
+  CHECK(uri::is_ok(ok));
+  REQUIRE(uri::value_if(ok) != nullptr);
+  CHECK(*uri::value_if(ok) == "abc");
+  CHECK(uri::error_if(ok) == nullptr);
+
+  auto bad = uri::percent_decode("%zz");
+  CHECK_FALSE(uri::is_ok(bad));
+  CHECK(uri::value_if(bad) == nullptr);
+  REQUIRE(uri::error_if(bad) != nullptr);
+  CHECK(uri::error_if(bad)->code == uri::error_code::invalid_percent_encoding);
 }

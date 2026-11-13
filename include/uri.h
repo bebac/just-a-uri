@@ -1,6 +1,7 @@
 #ifndef INCLUDE_URI_URI_H
 #define INCLUDE_URI_URI_H
 
+#include <span>
 #include <string_view>
 #include <vector>
 #include <variant>
@@ -81,7 +82,8 @@ namespace uri
     invalid_path,
     invalid_query,
     invalid_fragment,
-    invalid_percent_encoding
+    invalid_percent_encoding,
+    buffer_overflow
   };
 
   struct parse_error
@@ -92,6 +94,26 @@ namespace uri
 
   template <typename T>
   using result = std::variant<T, parse_error>;
+
+  // Result accessors: the variant without the get_if gymnastics at
+  // every call site.
+  template <typename T>
+  bool is_ok(const result<T>& r) noexcept
+  {
+    return r.index() == 0;
+  }
+
+  template <typename T>
+  const T* value_if(const result<T>& r) noexcept
+  {
+    return std::get_if<T>(&r);
+  }
+
+  template <typename T>
+  const parse_error* error_if(const result<T>& r) noexcept
+  {
+    return std::get_if<parse_error>(&r);
+  }
 
   /**
    * @brief Parses a URI string into its primary components.
@@ -121,6 +143,27 @@ namespace uri
    * All other triplets follow the same rules as the one-argument overload.
    */
   result<std::string> percent_decode(std::string_view input, std::string_view characters_to_preserve = {});
+
+  /**
+   * @brief Percent-decodes into caller-provided storage — no allocation.
+   *
+   * Same decoding rules as the one-argument percent_decode overload
+   * (every pct-encoded triplet decodes; there is no preserve set).
+   * Writes at most one output byte per input byte, so a buffer of
+   * input.size() bytes always suffices. Returns a view of the decoded
+   * prefix of output, or a parse_error — invalid_percent_encoding for
+   * malformed triplets, buffer_overflow when output is too small.
+   */
+  result<std::string_view> percent_decode_into(std::string_view input, std::span<char> output);
+
+  /**
+   * @brief Zero-allocation validity scan for percent-encodings.
+   *
+   * True when every '%' is followed by two hex digits (case-insensitive).
+   * Validate first, then decode without error handling: a validated
+   * input cannot produce invalid_percent_encoding.
+   */
+  bool is_valid_percent_encoding(std::string_view input) noexcept;
 }
 
 namespace std

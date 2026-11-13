@@ -69,6 +69,55 @@ namespace uri
         return c - 'A' + 10;
       return -1;
     }
+
+    // The decode loop both public percent_decode functions share:
+    // decodes into caller-provided storage, copying triplets whose
+    // decoded byte is in characters_to_preserve verbatim. Writes at
+    // most one output byte per input byte, so storage of input.size()
+    // bytes always suffices.
+    result<std::string_view> decode_into(
+      std::string_view input, std::span<char> output, std::string_view characters_to_preserve)
+    {
+      size_t used = 0;
+      for (size_t i = 0; i < input.size(); ++i)
+      {
+        // Every remaining input byte produces at least one output
+        // byte, so a full buffer with input left is an overflow.
+        if (used == output.size())
+          return parse_error{error_code::buffer_overflow, "Output buffer too small"};
+
+        if (input[i] != '%')
+        {
+          output[used++] = input[i];
+          continue;
+        }
+
+        if (i + 2 >= input.size())
+          return parse_error{error_code::invalid_percent_encoding, "Incomplete percent-encoding"};
+
+        const int high = hex_value(input[i + 1]);
+        const int low = hex_value(input[i + 2]);
+        if (high < 0 || low < 0)
+          return parse_error{error_code::invalid_percent_encoding, "Invalid hex digit in percent-encoding"};
+
+        const char decoded_char = static_cast<char>(high * 16 + low);
+        if (characters_to_preserve.find(decoded_char) != std::string_view::npos)
+        {
+          // A preserved triplet copies verbatim: three output bytes.
+          if (used + 3 > output.size())
+            return parse_error{error_code::buffer_overflow, "Output buffer too small"};
+          output[used++] = input[i];
+          output[used++] = input[i + 1];
+          output[used++] = input[i + 2];
+        }
+        else
+        {
+          output[used++] = decoded_char;
+        }
+        i += 2;
+      }
+      return std::string_view(output.data(), used);
+    }
   }
 
   std::vector<query_param_view> parse_query(std::string_view query_string)
@@ -98,42 +147,33 @@ namespace uri
 
   result<std::string> percent_decode(std::string_view input, std::string_view characters_to_preserve)
   {
-    std::string decoded;
-    decoded.reserve(input.size());
+    // decode_into writes at most one byte per input byte, so a buffer
+    // of input size covers every case. resize (not reserve) first:
+    // writing through data() is only defined for [0, size()).
+    std::string decoded(input.size(), '\0');
+    auto res = decode_into(input, decoded, characters_to_preserve);
+    if (auto* err = error_if(res))
+      return *err;
+    decoded.resize(value_if(res)->size());
+    return decoded;
+  }
 
+  bool is_valid_percent_encoding(std::string_view input) noexcept
+  {
     for (size_t i = 0; i < input.size(); ++i)
     {
       if (input[i] != '%')
-      {
-        decoded.push_back(input[i]);
         continue;
-      }
-
-      if (i + 2 >= input.size())
-      {
-        return parse_error{error_code::invalid_percent_encoding, "Incomplete percent-encoding"};
-      }
-
-      const int high = hex_value(input[i + 1]);
-      const int low = hex_value(input[i + 2]);
-      if (high < 0 || low < 0)
-      {
-        return parse_error{error_code::invalid_percent_encoding, "Invalid hex digit in percent-encoding"};
-      }
-
-      const char decoded_char = static_cast<char>(high * 16 + low);
-      if (characters_to_preserve.find(decoded_char) != std::string_view::npos)
-      {
-        decoded.append(input.substr(i, 3));
-      }
-      else
-      {
-        decoded.push_back(decoded_char);
-      }
+      if (i + 2 >= input.size() || hex_value(input[i + 1]) < 0 || hex_value(input[i + 2]) < 0)
+        return false;
       i += 2;
     }
+    return true;
+  }
 
-    return decoded;
+  result<std::string_view> percent_decode_into(std::string_view input, std::span<char> output)
+  {
+    return decode_into(input, output, {});
   }
 
   result<uri_view> parse(std::string_view uri_string)
